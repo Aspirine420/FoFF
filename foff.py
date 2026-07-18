@@ -5,8 +5,6 @@ import threading
 from datetime import datetime, timedelta
 import customtkinter as ctk
 from tkinter import messagebox
-
-# ===== ДОБАВЛЕНО: библиотеки для трея =====
 import pystray
 from PIL import Image, ImageDraw
 
@@ -47,12 +45,94 @@ def monitor_off():
     else:
         os.system("xset dpms force off")
 
-# ==================== Приложение (с треем) ====================
+# ==================== Словарь переводов (исправлены заполнители) ====================
+TRANSLATIONS = {
+    "ru": {
+        "window_title": "Таймер выключения",
+        "action_label": "Действие:",
+        "shutdown": "Выключить ПК",
+        "reboot": "Перезагрузить",
+        "hibernate": "Спящий режим",
+        "lock": "Завершить сеанс",
+        "internet": "Отключить интернет",
+        "monitor": "Выключить монитор",
+        "mode_countdown": "Обратный отсчёт",
+        "mode_exact": "В заданное время",
+        "input_label_countdown": "Секунд:",
+        "input_label_exact": "Время (ЧЧ:ММ или ЧЧ:ММ:СС):",
+        "hint_countdown": "Пример: 3600 = 1 час",
+        "hint_exact": "Пример: 11:15 или 11:15:30",
+        "start_btn": "Запустить",
+        "stop_btn": "Остановить",
+        "shutdown_now_btn": "Выключить сейчас",
+        "tray_btn": "— Свернуть в трей",
+        "remaining_label": "Осталось: {seconds} с",
+        "status_ready": "Готов",
+        "status_running": "Таймер запущен",
+        "status_executing": "⏳ Выполняется действие...",
+        "status_stopped": "⏹ Остановлено",
+        "status_canceled": "Отменено",
+        "status_done": "✅ Готово",
+        "status_error": "❌ Ошибка",
+        "confirm_title": "Подтверждение",
+        "confirm_message": "Вы уверены, что хотите {action}?",
+        "error_title": "Ошибка",
+        "error_parse_countdown": "Введите целое положительное число секунд.",
+        "error_parse_exact": "Введите время в формате ЧЧ:ММ или ЧЧ:ММ:СС (например, 11:15 или 11:15:30).",
+        "error_unknown": "Неизвестное действие",
+        "error_execute": "Не удалось выполнить действие:\n{error}",
+        "tray_title": "Таймер выключения",
+        "tray_show": "Показать окно",
+        "tray_hide": "Скрыть окно",
+        "tray_quit": "Выйти"
+    },
+    "en": {
+        "window_title": "Shutdown Timer",
+        "action_label": "Action:",
+        "shutdown": "Shut down PC",
+        "reboot": "Reboot",
+        "hibernate": "Hibernate",
+        "lock": "Lock session",
+        "internet": "Disconnect Internet",
+        "monitor": "Turn off monitor",
+        "mode_countdown": "Countdown",
+        "mode_exact": "Scheduled time",
+        "input_label_countdown": "Seconds:",
+        "input_label_exact": "Time (HH:MM or HH:MM:SS):",
+        "hint_countdown": "Example: 3600 = 1 hour",
+        "hint_exact": "Example: 11:15 or 11:15:30",
+        "start_btn": "Start",
+        "stop_btn": "Stop",
+        "shutdown_now_btn": "Shut down now",
+        "tray_btn": "— Minimize to tray",
+        "remaining_label": "Remaining: {seconds} s",
+        "status_ready": "Ready",
+        "status_running": "Timer running",
+        "status_executing": "⏳ Executing action...",
+        "status_stopped": "⏹ Stopped",
+        "status_canceled": "Canceled",
+        "status_done": "✅ Done",
+        "status_error": "❌ Error",
+        "confirm_title": "Confirmation",
+        "confirm_message": "Are you sure you want to {action}?",
+        "error_title": "Error",
+        "error_parse_countdown": "Enter a positive integer number of seconds.",
+        "error_parse_exact": "Enter time in HH:MM or HH:MM:SS format (e.g., 11:15 or 11:15:30).",
+        "error_unknown": "Unknown action",
+        "error_execute": "Failed to execute action:\n{error}",
+        "tray_title": "Shutdown Timer",
+        "tray_show": "Show window",
+        "tray_hide": "Hide window",
+        "tray_quit": "Quit"
+    }
+}
+
+# ==================== Приложение ====================
 class TimerApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Таймер выключения")
-        self.geometry("380x400")
+        self.lang = "ru"  # язык по умолчанию
+        self.geometry("400x430")
         self.resizable(False, False)
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
@@ -64,11 +144,19 @@ class TimerApp(ctk.CTk):
         self.timer_thread = None
         self.stop_event = threading.Event()
 
-        # ---- Иконка трея (создаётся позже, при первом сворачивании) ----
+        # ---- Иконка трея ----
         self.tray_icon = None
-
-        # ---- Переназначаем поведение при закрытии окна (крестик) ----
         self.protocol("WM_DELETE_WINDOW", self.hide_window)
+
+        # ---- Список действий (ключ, ru, en) ----
+        self.action_choices = [
+            ("shutdown", "Выключить ПК", "Shut down PC"),
+            ("reboot", "Перезагрузить", "Reboot"),
+            ("hibernate", "Спящий режим", "Hibernate"),
+            ("lock", "Завершить сеанс", "Lock session"),
+            ("internet", "Отключить интернет", "Disconnect Internet"),
+            ("monitor", "Выключить монитор", "Turn off monitor")
+        ]
 
         # ===== Основной таймер =====
         self.timer_display = ctk.CTkLabel(
@@ -80,40 +168,36 @@ class TimerApp(ctk.CTk):
         action_frame = ctk.CTkFrame(self, fg_color="transparent")
         action_frame.pack(fill="x", padx=30, pady=(5, 5))
 
-        ctk.CTkLabel(action_frame, text="Действие:", font=("Segoe UI", 11)).pack(side="left", padx=(0, 8))
+        self.action_label = ctk.CTkLabel(action_frame, text="Действие:", font=("Segoe UI", 11))
+        self.action_label.pack(side="left", padx=(0, 8))
 
         self.action_var = ctk.StringVar(value="shutdown")
-        action_choices = [
-            ("Выключить ПК", "shutdown"),
-            ("Перезагрузить", "reboot"),
-            ("Спящий режим", "hibernate"),
-            ("Завершить сеанс", "lock"),
-            ("Отключить интернет", "internet"),
-            ("Выключить монитор", "monitor")
-        ]
         self.action_combo = ctk.CTkComboBox(
             action_frame,
-            values=[name for name, val in action_choices],
+            values=[],
             variable=self.action_var,
             state="readonly",
             width=160
         )
         self.action_combo.pack(side="left", fill="x", expand=True)
-        self.action_combo.set(action_choices[0][0])
 
         # ===== Режим и поле ввода =====
+        self.mode_var = ctk.StringVar(value="countdown")
+
         mode_frame = ctk.CTkFrame(self, fg_color="transparent")
         mode_frame.pack(fill="x", padx=30, pady=(5, 5))
 
-        self.mode_var = ctk.StringVar(value="countdown")
-        ctk.CTkRadioButton(
+        self.radio_countdown = ctk.CTkRadioButton(
             mode_frame, text="Обратный отсчёт", variable=self.mode_var,
             value="countdown", command=self.update_input_style
-        ).pack(side="left", padx=(0, 15))
-        ctk.CTkRadioButton(
+        )
+        self.radio_countdown.pack(side="left", padx=(0, 15))
+
+        self.radio_exact = ctk.CTkRadioButton(
             mode_frame, text="В заданное время", variable=self.mode_var,
             value="exact", command=self.update_input_style
-        ).pack(side="left")
+        )
+        self.radio_exact.pack(side="left")
 
         # Поле ввода
         input_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -155,7 +239,7 @@ class TimerApp(ctk.CTk):
         )
         self.now_btn.pack(fill="x", padx=30, pady=(5, 5))
 
-        # ===== [ДОБАВЛЕНО] Кнопка "Свернуть в трей" =====
+        # ===== Кнопка "Свернуть в трей" =====
         self.tray_btn = ctk.CTkButton(
             self, text="— Свернуть в трей",
             command=self.hide_window,
@@ -165,7 +249,7 @@ class TimerApp(ctk.CTk):
         )
         self.tray_btn.pack(fill="x", padx=30, pady=(0, 5))
 
-        # ===== Зелёный лейбл "Осталось: X с" =====
+        # ===== Зелёный лейбл "Осталось" =====
         self.remaining_label = ctk.CTkLabel(
             self, text="Осталось: 0 с",
             font=("Segoe UI", 16, "bold"),
@@ -173,7 +257,7 @@ class TimerApp(ctk.CTk):
         )
         self.remaining_label.pack(pady=(5, 0))
 
-        # ===== Статус и часы =====
+        # ===== Статус, часы и выбор языка =====
         bottom_frame = ctk.CTkFrame(self, fg_color="transparent")
         bottom_frame.pack(fill="x", padx=30, pady=(5, 10))
 
@@ -182,16 +266,129 @@ class TimerApp(ctk.CTk):
         )
         self.status_label.pack(side="left")
 
+        # ----- Выбор языка -----
+        self.lang_combo = ctk.CTkComboBox(
+            bottom_frame,
+            values=["Русский", "English"],
+            state="readonly",
+            width=100,
+            command=self.change_language
+        )
+        self.lang_combo.pack(side="right", padx=(0, 0))
+        self.lang_combo.set("Русский")
+
         self.clock_label = ctk.CTkLabel(
             bottom_frame, text="", font=("Segoe UI", 10), text_color="#888888"
         )
-        self.clock_label.pack(side="right")
+        self.clock_label.pack(side="right", padx=(0, 10))
+
         self.update_clock()
 
-        # Первоначальная настройка полей
+        # Первоначальная настройка полей и языка
+        self.update_input_style()
+        self.refresh_language()
+
+    # ==================== Методы перевода ====================
+    def get_text(self, key, **kwargs):
+        """Возвращает перевод по ключу с подстановкой параметров."""
+        text = TRANSLATIONS[self.lang].get(key, key)
+        if kwargs:
+            text = text.format(**kwargs)
+        return text
+
+    def refresh_language(self):
+        """Обновляет все тексты интерфейса при смене языка."""
+        self.title(self.get_text("window_title"))
+        self.action_label.configure(text=self.get_text("action_label"))
+
+        # ---- Сохраняем текущее действие по ключу ----
+        current_display = self.action_var.get()
+        current_key = None
+        for key, ru, en in self.action_choices:
+            display = ru if self.lang == "ru" else en
+            if display == current_display:
+                current_key = key
+                break
+        if current_key is None:
+            current_key = "shutdown"
+
+        # Обновляем список действий
+        new_values = []
+        for key, ru, en in self.action_choices:
+            if self.lang == "ru":
+                new_values.append(ru)
+            else:
+                new_values.append(en)
+        self.action_combo.configure(values=new_values)
+
+        # Восстанавливаем выбранное действие
+        for key, ru, en in self.action_choices:
+            if key == current_key:
+                display = ru if self.lang == "ru" else en
+                self.action_var.set(display)
+                break
+
+        # Радио-кнопки
+        self.radio_countdown.configure(text=self.get_text("mode_countdown"))
+        self.radio_exact.configure(text=self.get_text("mode_exact"))
+
+        # Поле ввода
         self.update_input_style()
 
-    # ==================== Вспомогательные методы ====================
+        # Кнопки
+        self.start_btn.configure(text=self.get_text("start_btn"))
+        self.stop_btn.configure(text=self.get_text("stop_btn"))
+        self.now_btn.configure(text=self.get_text("shutdown_now_btn"))
+        self.tray_btn.configure(text=self.get_text("tray_btn"))
+
+        # Метка "Осталось"
+        if self.timer_running:
+            remaining_text = self.get_text("remaining_label", seconds=self.remaining_seconds)
+        else:
+            remaining_text = self.get_text("remaining_label", seconds=0)
+        self.remaining_label.configure(text=remaining_text)
+
+        # Статус (переводим только если он совпадает со стандартным)
+        current_status = self.status_label.cget("text")
+        status_map_ru = {
+            "Готов": "status_ready",
+            "Таймер запущен": "status_running",
+            "⏳ Выполняется действие...": "status_executing",
+            "⏹ Остановлено": "status_stopped",
+            "Отменено": "status_canceled",
+            "✅ Готово": "status_done",
+            "❌ Ошибка": "status_error"
+        }
+        status_map_en = {
+            "Ready": "status_ready",
+            "Timer running": "status_running",
+            "⏳ Executing action...": "status_executing",
+            "⏹ Stopped": "status_stopped",
+            "Canceled": "status_canceled",
+            "✅ Done": "status_done",
+            "❌ Error": "status_error"
+        }
+        status_map = status_map_ru if self.lang == "ru" else status_map_en
+        if current_status in status_map:
+            new_status = self.get_text(status_map[current_status])
+            self.status_label.configure(text=new_status)
+
+        # Удаляем старую иконку трея, чтобы при следующем сворачивании создать новую с переводом
+        if self.tray_icon is not None:
+            try:
+                self.tray_icon.stop()
+            except:
+                pass
+            self.tray_icon = None
+
+    def change_language(self, choice):
+        if choice == "Русский":
+            self.lang = "ru"
+        else:
+            self.lang = "en"
+        self.refresh_language()
+
+    # ==================== Остальные методы ====================
     def update_clock(self):
         now = datetime.now().strftime("%H:%M:%S  %d.%m.%Y")
         self.clock_label.configure(text=now)
@@ -199,14 +396,14 @@ class TimerApp(ctk.CTk):
 
     def update_input_style(self):
         if self.mode_var.get() == "countdown":
-            self.input_label.configure(text="Секунд:")
-            self.hint_label.configure(text="Пример: 3600 = 1 час")
+            self.input_label.configure(text=self.get_text("input_label_countdown"))
+            self.hint_label.configure(text=self.get_text("hint_countdown"))
             if not self.input_entry.get().strip():
                 self.input_entry.delete(0, ctk.END)
                 self.input_entry.insert(0, "3600")
         else:
-            self.input_label.configure(text="Время (ЧЧ:ММ или ЧЧ:ММ:СС):")
-            self.hint_label.configure(text="Пример: 11:15 или 11:15:30")
+            self.input_label.configure(text=self.get_text("input_label_exact"))
+            self.hint_label.configure(text=self.get_text("hint_exact"))
             if not self.input_entry.get().strip():
                 self.input_entry.delete(0, ctk.END)
                 self.input_entry.insert(0, "11:15")
@@ -220,9 +417,12 @@ class TimerApp(ctk.CTk):
                     raise ValueError
                 return sec
             except:
-                messagebox.showerror("Ошибка", "Введите целое положительное число секунд.")
+                messagebox.showerror(
+                    self.get_text("error_title"),
+                    self.get_text("error_parse_countdown")
+                )
                 return None
-        else:  # точное время
+        else:
             try:
                 parts = raw.split(":")
                 if len(parts) == 1:
@@ -245,7 +445,10 @@ class TimerApp(ctk.CTk):
                 delta = target - now
                 return int(delta.total_seconds())
             except:
-                messagebox.showerror("Ошибка", "Введите время в формате ЧЧ:ММ или ЧЧ:ММ:СС (например, 11:15 или 11:15:30).")
+                messagebox.showerror(
+                    self.get_text("error_title"),
+                    self.get_text("error_parse_exact")
+                )
                 return None
 
     def update_timer_display(self, seconds):
@@ -254,17 +457,13 @@ class TimerApp(ctk.CTk):
         secs = seconds % 60
         self.timer_display.configure(text=f"{hours:02d}:{minutes:02d}:{secs:02d}")
 
-    # ==================== Управление таймером ====================
     def start_timer(self):
         if self.timer_running:
             return
-
         seconds = self.parse_time()
         if seconds is None:
             return
-
         if seconds == 0:
-            # Выполняем действие сразу без подтверждения
             self.execute_action(ask_confirm=False)
             return
 
@@ -273,8 +472,10 @@ class TimerApp(ctk.CTk):
         self.total_seconds = seconds
         self.start_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
-        self.status_label.configure(text="Таймер запущен")
-        self.remaining_label.configure(text=f"Осталось: {seconds} с")
+        self.status_label.configure(text=self.get_text("status_running"))
+        self.remaining_label.configure(
+            text=self.get_text("remaining_label", seconds=seconds)
+        )
 
         self.stop_event.clear()
         self.timer_thread = threading.Thread(target=self._timer_loop, daemon=True)
@@ -293,17 +494,20 @@ class TimerApp(ctk.CTk):
         if not self.timer_running:
             return
         self.update_timer_display(self.remaining_seconds)
-        self.remaining_label.configure(text=f"Осталось: {self.remaining_seconds} с")
-        self.status_label.configure(text=f"Осталось: {self.remaining_seconds} с")
+        self.remaining_label.configure(
+            text=self.get_text("remaining_label", seconds=self.remaining_seconds)
+        )
+        self.status_label.configure(
+            text=self.get_text("remaining_label", seconds=self.remaining_seconds)
+        )
 
     def _on_timer_finish(self):
         self.timer_running = False
         self.start_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
         self.update_timer_display(0)
-        self.remaining_label.configure(text="Осталось: 0 с")
-        self.status_label.configure(text="⏳ Выполняется действие...")
-        # Выполняем действие без подтверждения
+        self.remaining_label.configure(text=self.get_text("remaining_label", seconds=0))
+        self.status_label.configure(text=self.get_text("status_executing"))
         self.execute_action(ask_confirm=False)
 
     def stop_timer(self):
@@ -313,21 +517,24 @@ class TimerApp(ctk.CTk):
             self.start_btn.configure(state="normal")
             self.stop_btn.configure(state="disabled")
             self.update_timer_display(0)
-            self.remaining_label.configure(text="Осталось: 0 с")
-            self.status_label.configure(text="⏹ Остановлено")
+            self.remaining_label.configure(text=self.get_text("remaining_label", seconds=0))
+            self.status_label.configure(text=self.get_text("status_stopped"))
 
-    # ==================== Выполнение действий ====================
     def execute_action(self, ask_confirm=True):
-        action_name = self.action_combo.get()
-        action_map = {
-            "Выключить ПК": "shutdown",
-            "Перезагрузить": "reboot",
-            "Спящий режим": "hibernate",
-            "Завершить сеанс": "lock",
-            "Отключить интернет": "internet",
-            "Выключить монитор": "monitor"
-        }
-        action_key = action_map.get(action_name, "shutdown")
+        action_display = self.action_var.get()
+        action_key = None
+        for key, ru, en in self.action_choices:
+            display = ru if self.lang == "ru" else en
+            if display == action_display:
+                action_key = key
+                break
+        if action_key is None:
+            messagebox.showerror(
+                self.get_text("error_title"),
+                self.get_text("error_unknown")
+            )
+            return
+
         actions = {
             "shutdown": shutdown_pc,
             "reboot": reboot_pc,
@@ -338,63 +545,70 @@ class TimerApp(ctk.CTk):
         }
         func = actions.get(action_key)
         if func:
-            # Если требуется подтверждение и действие критичное
+            action_name = self.get_text(action_key)
             if ask_confirm and action_key in ("shutdown", "reboot", "hibernate"):
-                if not messagebox.askyesno("Подтверждение", f"Вы уверены, что хотите {action_name.lower()}?"):
-                    self.status_label.configure(text="Отменено")
-                    self.remaining_label.configure(text="Отменено")
+                if not messagebox.askyesno(
+                    self.get_text("confirm_title"),
+                    self.get_text("confirm_message", action=action_name.lower())
+                ):
+                    self.status_label.configure(text=self.get_text("status_canceled"))
+                    self.remaining_label.configure(text=self.get_text("status_canceled"))
                     return
             try:
                 func()
-                self.status_label.configure(text=f"✅ {action_name} выполнено")
-                self.remaining_label.configure(text="✅ Готово")
+                if self.lang == "ru":
+                    self.status_label.configure(text=f"✅ {action_name} выполнено")
+                else:
+                    self.status_label.configure(text=f"✅ {action_name} done")
+                self.remaining_label.configure(text=self.get_text("status_done"))
             except Exception as e:
-                messagebox.showerror("Ошибка", f"Не удалось выполнить действие:\n{e}")
-                self.status_label.configure(text="❌ Ошибка")
-                self.remaining_label.configure(text="❌ Ошибка")
+                messagebox.showerror(
+                    self.get_text("error_title"),
+                    self.get_text("error_execute", error=str(e))
+                )
+                self.status_label.configure(text=self.get_text("status_error"))
+                self.remaining_label.configure(text=self.get_text("status_error"))
         else:
-            messagebox.showerror("Ошибка", "Неизвестное действие")
+            messagebox.showerror(
+                self.get_text("error_title"),
+                self.get_text("error_unknown")
+            )
 
     def shutdown_now(self):
-        # При ручном нажатии всегда спрашиваем
-        if messagebox.askyesno("Подтверждение", "Вы уверены, что хотите выключить компьютер сейчас?"):
+        if messagebox.askyesno(
+            self.get_text("confirm_title"),
+            self.get_text("confirm_message", action=self.get_text("shutdown").lower())
+        ):
             shutdown_pc()
 
-    # ==================== Методы для работы с треем (ДОБАВЛЕНЫ) ====================
+    # ==================== Методы трея ====================
     def create_tray_icon(self):
-        """Создаёт иконку в трее с контекстным меню."""
-        # Генерируем простую иконку (круг с буквой T в цвете #00d8ff)
         image = Image.new('RGB', (64, 64), color='black')
         draw = ImageDraw.Draw(image)
         draw.ellipse((8, 8, 56, 56), fill='#00d8ff')
         draw.text((20, 14), "T", fill='white', font=None, size=40)
-        # Меню
         menu = pystray.Menu(
-            pystray.MenuItem("Показать окно", self.show_window),
-            pystray.MenuItem("Скрыть окно", self.hide_window),
+            pystray.MenuItem(self.get_text("tray_show"), self.show_window),
+            pystray.MenuItem(self.get_text("tray_hide"), self.hide_window),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Выйти", self.quit_app)
+            pystray.MenuItem(self.get_text("tray_quit"), self.quit_app)
         )
-        self.tray_icon = pystray.Icon("timer_tray", image, "Таймер выключения", menu)
+        self.tray_icon = pystray.Icon("timer_tray", image, self.get_text("tray_title"), menu)
 
     def show_window(self, icon=None, item=None):
-        """Показывает главное окно."""
         self.deiconify()
         self.lift()
         self.focus_force()
 
     def hide_window(self, icon=None, item=None):
-        """Скрывает окно (сворачивает в трей)."""
         self.withdraw()
-        # Если иконка ещё не запущена – запускаем
         if self.tray_icon is None:
             self.create_tray_icon()
         if not self.tray_icon._running:
             threading.Thread(target=self.tray_icon.run, daemon=True).start()
 
     def quit_app(self, icon=None, item=None):
-        """Полный выход из приложения."""
-        self.stop_timer()  # останавливаем таймер
+        self.stop_timer()
         if self.tray_icon:
             self.tray_icon.stop()
         self.quit()
@@ -405,16 +619,7 @@ if __name__ == "__main__":
     app = TimerApp()
     app.mainloop()
     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-#####ByAsp710###
+
+
+
+#####by_asp710#####
